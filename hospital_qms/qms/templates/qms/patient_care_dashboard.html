@@ -1,0 +1,490 @@
+{% extends 'qms/base.html' %}
+
+{% block title %}Patient Care Dashboard - Hospital QMS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .queue-container {
+        min-height: 500px;
+    }
+    .queue-header {
+        background-color: #0d6efd;
+        color: white;
+        padding: 10px 15px;
+        border-radius: 5px 5px 0 0;
+    }
+    .room-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 15px;
+    }
+    .room-card {
+        height: 120px;
+        border-radius: 5px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 10px;
+        text-align: center;
+    }
+    .room-occupied {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+    }
+    .room-available {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+    }
+    .patient-card {
+        margin-bottom: 15px;
+        position: relative;
+    }
+    .emergency-badge {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+    }
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+        margin-top: 10px;
+    }
+    .action-buttons button {
+        flex: 1;
+    }
+    .status-waiting {
+        border-left: 4px solid #ffc107;
+    }
+    .status-calling {
+        border-left: 4px solid #0d6efd;
+    }
+    .status-processing {
+        border-left: 4px solid #198754;
+    }
+    .status-hold {
+        border-left: 4px solid #dc3545;
+    }
+    .queue-list {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    .no-patients {
+        text-align: center;
+        padding: 20px;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4 class="mb-0">Patient Care Dashboard - {{ department.name }}</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="queue-container">
+                            <div class="queue-header">
+                                <h5 class="mb-0">Optometrist Queue</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-12">
+                                        <button class="btn btn-primary w-100" id="callNextOptometrist" {% if not optometrist_available %}disabled{% endif %}>
+                                            Call Next Patient
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <h6>Rooms</h6>
+                                <div class="room-grid mb-4">
+                                    {% for room in optometrist_rooms %}
+                                    <div class="room-card room-available" id="optometrist-room-{{ room }}">
+                                        <h5>{{ room }}</h5>
+                                        <p class="mb-0">Available</p>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                <h6>Waiting List</h6>
+                                <div class="queue-list">
+                                    {% for patient_line in optometrist_queue %}
+                                    <div class="card patient-card status-{{ patient_line.status }}" data-id="{{ patient_line.id }}">
+                                        <div class="card-body">
+                                            {% if patient_line.patient.emergency %}
+                                            <span class="badge bg-danger emergency-badge">Emergency</span>
+                                            {% endif %}
+                                            <h6 class="card-title">{{ patient_line.patient.name }}</h6>
+                                            <p class="card-text">
+                                                MRN: {{ patient_line.patient.mrn }}<br>
+                                                Age: {{ patient_line.patient.age }} | Gender: {{ patient_line.patient.get_gender_display }}
+                                            </p>
+                                            {% if patient_line.status == 'calling' %}
+                                            <p class="card-text">
+                                                <strong>Room: {{ patient_line.room }}</strong>
+                                            </p>
+                                            {% endif %}
+                                            {% if patient_line.status == 'processing' %}
+                                            <p class="card-text">
+                                                <strong>In Room: {{ patient_line.room }}</strong>
+                                            </p>
+                                            {% endif %}
+                                            <div class="action-buttons">
+                                                {% if patient_line.status == 'waiting' %}
+                                                <button class="btn btn-sm btn-warning hold-btn">Hold</button>
+                                                {% elif patient_line.status == 'calling' %}
+                                                <button class="btn btn-sm btn-success start-btn">Start Processing</button>
+                                                <button class="btn btn-sm btn-secondary cancel-btn">Cancel Call</button>
+                                                {% elif patient_line.status == 'processing' %}
+                                                <button class="btn btn-sm btn-success complete-btn">Complete</button>
+                                                <button class="btn btn-sm btn-warning hold-btn">Hold</button>
+                                                {% elif patient_line.status == 'hold' %}
+                                                <button class="btn btn-sm btn-primary return-btn">Return to Queue</button>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <div class="no-patients">
+                                        No patients in queue
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="queue-container">
+                            <div class="queue-header">
+                                <h5 class="mb-0">Doctor Queue</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-12">
+                                        <button class="btn btn-primary w-100" id="callNextDoctor" {% if not doctor_available %}disabled{% endif %}>
+                                            Call Next Patient
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <h6>Rooms</h6>
+                                <div class="room-grid mb-4">
+                                    {% for room in doctor_rooms %}
+                                    <div class="room-card room-available" id="doctor-room-{{ room }}">
+                                        <h5>{{ room }}</h5>
+                                        <p class="mb-0">Available</p>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                <h6>Waiting List</h6>
+                                <div class="queue-list">
+                                    {% for patient_line in doctor_queue %}
+                                    <div class="card patient-card status-{{ patient_line.status }}" data-id="{{ patient_line.id }}">
+                                        <div class="card-body">
+                                            {% if patient_line.patient.emergency %}
+                                            <span class="badge bg-danger emergency-badge">Emergency</span>
+                                            {% endif %}
+                                            <h6 class="card-title">{{ patient_line.patient.name }}</h6>
+                                            <p class="card-text">
+                                                MRN: {{ patient_line.patient.mrn }}<br>
+                                                Age: {{ patient_line.patient.age }} | Gender: {{ patient_line.patient.get_gender_display }}
+                                            </p>
+                                            {% if patient_line.status == 'calling' %}
+                                            <p class="card-text">
+                                                <strong>Room: {{ patient_line.room }}</strong>
+                                            </p>
+                                            {% endif %}
+                                            {% if patient_line.status == 'processing' %}
+                                            <p class="card-text">
+                                                <strong>In Room: {{ patient_line.room }}</strong>
+                                            </p>
+                                            {% endif %}
+                                            <div class="action-buttons">
+                                                {% if patient_line.status == 'waiting' %}
+                                                <button class="btn btn-sm btn-warning hold-btn">Hold</button>
+                                                {% elif patient_line.status == 'calling' %}
+                                                <button class="btn btn-sm btn-success start-btn">Start Processing</button>
+                                                <button class="btn btn-sm btn-secondary cancel-btn">Cancel Call</button>
+                                                {% elif patient_line.status == 'processing' %}
+                                                <button class="btn btn-sm btn-success complete-btn">Complete</button>
+                                                <button class="btn btn-sm btn-warning hold-btn">Hold</button>
+                                                {% elif patient_line.status == 'hold' %}
+                                                <button class="btn btn-sm btn-primary return-btn">Return to Queue</button>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <div class="no-patients">
+                                        No patients in queue
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Wait for the entire page to load before running any scripts
+    document.addEventListener('DOMContentLoaded', function() {
+
+        // Helper function to force a hard reload, bypassing cache
+        function forceReload() {
+            const url = new URL(window.location.href);
+            url.searchParams.set('t', new Date().getTime());
+            window.location.href = url.toString();
+        }
+
+        // Main function to update room status
+        function updateRoomStatus() {
+            try {
+                // Reset all rooms to available
+                {% for room in optometrist_rooms %}
+                const optRoom = document.getElementById('optometrist-room-{{ room }}');
+                if (optRoom) {
+                    optRoom.className = 'room-card room-available';
+                    optRoom.innerHTML = '<h5>{{ room }}</h5><p class="mb-0">Available</p>';
+                }
+                {% endfor %}
+                
+                {% for room in doctor_rooms %}
+                const docRoom = document.getElementById('doctor-room-{{ room }}');
+                if (docRoom) {
+                    docRoom.className = 'room-card room-available';
+                    docRoom.innerHTML = '<h5>{{ room }}</h5><p class="mb-0">Available</p>';
+                }
+                {% endfor %}
+                
+                // Update rooms with patients
+                {% for patient_line in optometrist_queue %}
+                {% if patient_line.room %}
+                const optometristRoom = document.getElementById('optometrist-room-{{ patient_line.room }}');
+                if (optometristRoom) {
+                    optometristRoom.className = 'room-card room-occupied';
+                    optometristRoom.innerHTML = `
+                        <h5>{{ patient_line.room }}</h5>
+                        <p class="mb-0">{{ patient_line.patient.name }}</p>
+                        <small>{{ patient_line.get_status_display }}</small>
+                    `;
+                }
+                {% endif %}
+                {% endfor %}
+                
+                {% for patient_line in doctor_queue %}
+                {% if patient_line.room %}
+                const doctorRoom = document.getElementById('doctor-room-{{ patient_line.room }}');
+                if (doctorRoom) {
+                    doctorRoom.className = 'room-card room-occupied';
+                    doctorRoom.innerHTML = `
+                        <h5>{{ patient_line.room }}</h5>
+                        <p class="mb-0">{{ patient_line.patient.name }}</p>
+                        <small>{{ patient_line.get_status_display }}</small>
+                    `;
+                }
+                {% endif %}
+                {% endfor %}
+
+            } catch (error) {
+                console.error("Error in updateRoomStatus:", error);
+            }
+        }
+        
+        // --- Event Listeners for Action Buttons ---
+
+        // Start processing
+        document.querySelectorAll('.start-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const card = this.closest('.patient-card');
+                if (!card || !card.dataset.id) {
+                    console.error("Could not find patient card ID for start button.");
+                    return;
+                }
+                const patientLineId = card.dataset.id;
+                
+                fetch('/api/start-processing/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: `patient_line_id=${patientLineId}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        forceReload();
+                    } else {
+                        alert(data.error || 'Failed to start processing');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while starting processing');
+                });
+            });
+        });
+        
+        // Complete patient
+        document.querySelectorAll('.complete-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const card = this.closest('.patient-card');
+                if (!card || !card.dataset.id) {
+                    console.error("Could not find patient card ID for complete button.");
+                    return;
+                }
+                const patientLineId = card.dataset.id;
+                
+                fetch('/api/complete-patient/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: `patient_line_id=${patientLineId}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        forceReload();
+                    } else {
+                        alert(data.error || 'Failed to complete patient');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while completing patient');
+                });
+            });
+        });
+
+        // Hold patient
+        document.querySelectorAll('.hold-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const card = this.closest('.patient-card');
+                if (!card || !card.dataset.id) {
+                    console.error("Could not find patient card ID for hold button.");
+                    return;
+                }
+                const patientLineId = card.dataset.id;
+                
+                fetch('/api/hold-patient/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: `patient_line_id=${patientLineId}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        forceReload();
+                    } else {
+                        alert(data.error || 'Failed to put patient on hold');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while putting patient on hold');
+                });
+            });
+        });
+
+        // Return to queue / Cancel Call
+        document.querySelectorAll('.return-btn, .cancel-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const card = this.closest('.patient-card');
+                if (!card || !card.dataset.id) {
+                    console.error("Could not find patient card ID for return/cancel button.");
+                    return;
+                }
+                const patientLineId = card.dataset.id;
+                
+                fetch('/api/return-to-queue/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: `patient_line_id=${patientLineId}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        forceReload();
+                    } else {
+                        alert(data.error || 'Failed to return patient to queue');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while returning patient to queue');
+                });
+            });
+        });
+
+        // --- Event Listeners for "Call Next" Buttons ---
+
+        document.getElementById('callNextOptometrist').addEventListener('click', function() {
+            fetch('/api/call-next/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: `queue_type=optometrist&department_id={{ department.id }}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    forceReload();
+                } else {
+                    alert(data.error || 'Failed to call next patient');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while calling the next patient');
+            });
+        });
+        
+        document.getElementById('callNextDoctor').addEventListener('click', function() {
+            fetch('/api/call-next/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: `queue_type=doctor&department_id={{ department.id }}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    forceReload();
+                } else {
+                    alert(data.error || 'Failed to call next patient');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while calling the next patient');
+            });
+        });
+
+        // --- Initial Page Setup ---
+        updateRoomStatus();
+
+    }); // End of DOMContentLoaded
+</script>
+{% endblock %}

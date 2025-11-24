@@ -1,0 +1,294 @@
+{% extends 'qms/base.html' %}
+
+{% block title %}Register Patient - Hospital QMS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="card">
+        <div class="card-header">
+            <h4 class="mb-0">Register Patient</h4>
+        </div>
+        <div class="card-body">
+            <form id="patientForm" method="post">
+                {% csrf_token %}
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="mrnLookup" class="form-label">Search Existing Patient (MRN)</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="mrnLookup" placeholder="e.g., MRN-2025-0001">
+                                <button class="btn btn-outline-secondary" type="button" id="searchBtn">Search</button>
+                            </div>
+                            <div id="searchResult" class="mt-2"></div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-center">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="newPatientToggle" checked>
+                            <label class="form-check-label" for="newPatientToggle">
+                                New Patient
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Full Name</label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="age" class="form-label">Age</label>
+                            <input type="number" class="form-control" id="age" name="age" required>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="gender" class="form-label">Gender</label>
+                            <select class="form-select" id="gender" name="gender" required>
+                                <option value="">Select</option>
+                                <option value="M">Male</option>
+                                <option value="F">Female</option>
+                                <option value="O">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="care_of" class="form-label">Care Of</label>
+                            <input type="text" class="form-control" id="care_of" name="care_of">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="phone" class="form-label">Phone Number</label>
+                            <input type="tel" class="form-control" id="phone" name="phone" required>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="address" class="form-label">Address</label>
+                    <textarea class="form-control" id="address" name="address" rows="3" required></textarea>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="department" class="form-label">Department</label>
+                            <select class="form-select" id="department" name="department" required>
+                                <option value="">Select Department</option>
+                                {% for dept in departments %}
+                                <option value="{{ dept.id }}">{{ dept.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="doctor" class="form-label">Specific Doctor (Optional)</label>
+                            <select class="form-select" id="doctor" name="doctor">
+                                <option value="">No Specific Doctor</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="emergency" name="emergency">
+                    <label class="form-check-label" for="emergency">
+                        Mark as Emergency
+                    </label>
+                </div>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{% url 'counter_dashboard' %}" class="btn btn-secondary me-md-2">Cancel</a>
+                    <button type="submit" class="btn btn-primary">Register Patient</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="successModalLabel">Patient Registered Successfully</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Patient has been registered with MRN: <strong id="generatedMrn"></strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="registerAnotherBtn">Register Another Patient</button>
+                <a href="{% url 'counter_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Load doctors based on department selection
+    document.getElementById('department').addEventListener('change', function() {
+        const departmentId = this.value;
+        const doctorSelect = document.getElementById('doctor');
+        
+        // Clear existing options
+        doctorSelect.innerHTML = '<option value="">No Specific Doctor</option>';
+        
+        if (departmentId) {
+            fetch(`/api/doctors/${departmentId}/`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        data.doctors.forEach(doctor => {
+                            const option = document.createElement('option');
+                            option.value = doctor.id;
+                            option.textContent = `${doctor.name} (${doctor.role})`;
+                            doctorSelect.appendChild(option);
+                        });
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+    });
+    
+    // Search for existing patient by MRN
+    document.getElementById('searchBtn').addEventListener('click', function() {
+        const mrn = document.getElementById('mrnLookup').value.trim();
+        if (!mrn) {
+            alert('Please enter an MRN');
+            return;
+        }
+        
+        fetch(`/api/patient/${mrn}/`)
+            .then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('searchResult');
+                if (data.success) {
+                    // Fill form with patient data
+                    document.getElementById('name').value = data.name;
+                    document.getElementById('age').value = data.age;
+                    document.getElementById('gender').value = data.gender;
+                    document.getElementById('care_of').value = data.care_of;
+                    document.getElementById('phone').value = data.phone;
+                    document.getElementById('address').value = data.address;
+                    document.getElementById('department').value = data.department_id;
+                    
+                    // Trigger department change to load doctors
+                    document.getElementById('department').dispatchEvent(new Event('change'));
+                    
+                    // Set doctor after a delay to ensure doctors are loaded
+                    setTimeout(() => {
+                        if (data.doctor_id) {
+                            document.getElementById('doctor').value = data.doctor_id;
+                        }
+                    }, 300);
+                    
+                    // Uncheck new patient toggle
+                    document.getElementById('newPatientToggle').checked = false;
+                    
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            Patient data loaded successfully
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-danger">
+                            ${data.error || 'Patient not found'}
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('searchResult').innerHTML = `
+                    <div class="alert alert-danger">
+                        An error occurred while searching
+                    </div>
+                `;
+            });
+    });
+    
+    // Handle form submission
+    document.getElementById('patientForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        fetch('/register-patient/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('generatedMrn').textContent = data.mrn;
+                const successModal = new bootstrap.Modal(document.getElementById('successModal'));
+                successModal.show();
+            } else {
+                // Display form errors
+                let errorHtml = '<div class="alert alert-danger"><ul>';
+                for (const field in data.errors) {
+                    errorHtml += `<li>${field}: ${data.errors[field].join(', ')}</li>`;
+                }
+                errorHtml += '</ul></div>';
+                
+                const resultDiv = document.getElementById('searchResult');
+                resultDiv.innerHTML = errorHtml;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            const resultDiv = document.getElementById('searchResult');
+            resultDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    An error occurred while registering the patient
+                </div>
+            `;
+        });
+    });
+    
+    // Register another patient button
+    document.getElementById('registerAnotherBtn').addEventListener('click', function() {
+        // Reset form
+        document.getElementById('patientForm').reset();
+        document.getElementById('searchResult').innerHTML = '';
+        document.getElementById('newPatientToggle').checked = true;
+        
+        // Hide modal
+        const successModal = bootstrap.Modal.getInstance(document.getElementById('successModal'));
+        successModal.hide();
+    });
+    
+    // Check if MRN is in URL (for quick registration from dashboard)
+    const urlParams = new URLSearchParams(window.location.search);
+    const mrn = urlParams.get('mrn');
+    if (mrn) {
+        document.getElementById('mrnLookup').value = mrn;
+        document.getElementById('searchBtn').click();
+    }
+</script>
+{% endblock %}

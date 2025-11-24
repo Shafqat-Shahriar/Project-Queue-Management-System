@@ -1,0 +1,20 @@
+{% extends 'qms/base.html' %}
+
+{% block title %}No Assignment - Hospital QMS{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">No Department Assignment</h4>
+            </div>
+            <div class="card-body text-center">
+                <p>You have not been assigned to any department yet.</p>
+                <p>Please contact the administrator to get assigned to a department.</p>
+                <a href="{% url 'logout' %}" class="btn btn-primary">Logout</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
